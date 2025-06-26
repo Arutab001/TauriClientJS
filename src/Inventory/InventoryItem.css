@@ -1,0 +1,17 @@
+.inventory-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    cursor: grab;
+    user-select: none; /* чтобы текст не выделялся при перетаскивании */
+    font-size: 12px;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.inventory-item:hover {
+    background-color: #e0e0e0;
+    border-color: #aaa;
+} 

@@ -1,0 +1,33 @@
+.side-menu {
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    background-color: #1a1a1a;
+    height: 100vh;
+    border-right: 1px solid #444;
+}
+
+.side-menu button {
+    background-color: #333;
+    color: white;
+    border: 1px solid #555;
+    padding: 10px 20px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 16px;
+    border-radius: 5px;
+}
+
+.side-menu button:hover {
+    background-color: #444;
+}
+
+.side-menu .back-button {
+    margin-top: auto;
+    background-color: #5a2828;
+}
+
+.side-menu .back-button:hover {
+    background-color: #7a3838;
+} 

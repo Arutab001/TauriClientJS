@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './CharacterPage.css';
 import { getLevelAndProf, XP_TABLE } from '../../Data/LevelUtils';
+import { useWebSocket } from '../../WebSocketContext.jsx';
 
 function getModifier(score) {
   return Math.floor((score - 10) / 2);
@@ -99,23 +100,32 @@ function getLevelXpRange(level) {
   return { min, max };
 }
 
-export default function CharacterPage({ character, onUpdateCharacter }) {
+export default function CharacterPage({ character, onUpdateCharacter, playerId }) {
   if (!character) return <div>Нет данных о персонаже</div>;
   const abilities = extractAbilities(character);
-  const [proficientSkills, setProficientSkills] = useState([]);
+  const [proficientSkills, setProficientSkills] = useState(character.proficientSkills || []);
+  const [manualSkillFlags, setManualSkillFlags] = useState(character.manualSkillFlags || {});
+  const [manualSkillValues, setManualSkillValues] = useState(character.manualSkillValues || {});
+  const [abilitiesState, setAbilitiesState] = useState(abilities);
   const xp = getXp(character);
   const { level, prof } = getLevelAndProf(xp);
   const { min: levelMinXp, max: levelMaxXp } = getLevelXpRange(level);
   const xpToNext = levelMaxXp - xp;
   const xpProgress = Math.max(0, Math.min(1, (xp - levelMinXp) / (levelMaxXp - levelMinXp)));
   const [customXp, setCustomXp] = useState('');
+  const { send } = useWebSocket();
 
   const handleCheckboxChange = (skill) => {
-    setProficientSkills(prev =>
-      prev.includes(skill)
+    setProficientSkills(prev => {
+      const updated = prev.includes(skill)
         ? prev.filter(s => s !== skill)
-        : [...prev, skill]
-    );
+        : [...prev, skill];
+      // Сохраняем в персонаже
+      const updatedChar = { ...character, proficientSkills: updated };
+      onUpdateCharacter(updatedChar);
+      if (playerId && typeof send === 'function') send({ type: 'update_character', ownerId: playerId, character: updatedChar });
+      return updated;
+    });
   };
 
   const handleXpChange = (delta) => {
@@ -123,6 +133,7 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
     const newXp = Math.max(0, xp + delta);
     const updatedChar = setXp(character, newXp);
     onUpdateCharacter(updatedChar);
+    if (playerId) send({ type: 'update_character', ownerId: playerId, character: updatedChar });
   };
 
   const handleExport = async () => {
@@ -224,6 +235,58 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
     }
   }, []);
 
+  // При открытии персонажа обновляем состояния из character
+  useEffect(() => {
+    setProficientSkills(character.proficientSkills || []);
+    setManualSkillFlags(character.manualSkillFlags || {});
+    setManualSkillValues(character.manualSkillValues || {});
+    setAbilitiesState(extractAbilities(character));
+  }, [character]);
+
+  // Сохраняем изменения характеристик
+  const handleAbilityChange = (key, value) => {
+    const newAbilities = { ...abilitiesState, [key]: Number(value) };
+    setAbilitiesState(newAbilities);
+    // Сохраняем в character
+    let updatedChar = { ...character };
+    if (updatedChar.abilities) {
+      updatedChar.abilities = { ...updatedChar.abilities, [key]: Number(value) };
+    } else if (updatedChar.stats && updatedChar.stats[abilityKeyMap[key]]) {
+      updatedChar.stats[abilityKeyMap[key]].score = Number(value);
+    } else {
+      updatedChar.abilities = { ...newAbilities };
+    }
+    onUpdateCharacter(updatedChar);
+    if (playerId && typeof send === 'function') send({ type: 'update_character', ownerId: playerId, character: updatedChar });
+  };
+
+  // Сохраняем ручной режим для навыка
+  const handleManualFlagChange = (skill, checked) => {
+    const newFlags = { ...manualSkillFlags, [skill]: checked };
+    setManualSkillFlags(newFlags);
+    const updatedChar = { ...character, manualSkillFlags: newFlags };
+    onUpdateCharacter(updatedChar);
+    if (playerId && typeof send === 'function') send({ type: 'update_character', ownerId: playerId, character: updatedChar });
+  };
+  // Сохраняем ручное значение навыка
+  const handleManualValueChange = (skill, value) => {
+    const newValues = { ...manualSkillValues, [skill]: value };
+    setManualSkillValues(newValues);
+    const updatedChar = { ...character, manualSkillValues: newValues };
+    onUpdateCharacter(updatedChar);
+    if (playerId && typeof send === 'function') send({ type: 'update_character', ownerId: playerId, character: updatedChar });
+  };
+
+  // Для сопоставления ключей abilities <-> stats
+  const abilityKeyMap = {
+    strength: 'str',
+    dexterity: 'dex',
+    constitution: 'con',
+    intelligence: 'int',
+    wisdom: 'wis',
+    charisma: 'cha',
+  };
+
   return (
     <div className="character-page-container">
       <h1>Character Info</h1>
@@ -259,8 +322,8 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
         </div>
       </div>
       <h3>Abilities</h3>
-      {abilities && Object.keys(abilities).length > 0 ? (
-        <table className="abilities-table">
+      {abilitiesState && Object.keys(abilitiesState).length > 0 ? (
+        <table className="abilities-table" style={{ borderCollapse: 'collapse', marginBottom: 16 }}>
           <thead>
             <tr>
               <th>Ability</th>
@@ -269,11 +332,22 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(abilities).map(([key, value]) => (
+            {Object.entries(abilitiesState).map(([key, value]) => (
               <tr key={key}>
-                <td style={{textTransform: 'capitalize'}}>{key}</td>
-                <td>{value}</td>
-                <td>{getModifier(value) >= 0 ? '+' : ''}{getModifier(value)}</td>
+                <td style={{ textTransform: 'capitalize', textAlign: 'center', padding: 6 }}>{key}</td>
+                <td style={{ padding: 0, textAlign: 'center' }}>
+                  <input
+                    type="number"
+                    value={value}
+                    min={1}
+                    max={30}
+                    style={{ width: 44, height: 44, textAlign: 'center', fontWeight: 'bold', fontSize: 20, borderRadius: 8, border: '2px solid #4af', background: '#181c24', color: '#fff', boxSizing: 'border-box' }}
+                    onChange={e => handleAbilityChange(key, e.target.value)}
+                  />
+                </td>
+                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 20, width: 44, height: 44, borderRadius: 8, background: '#222', color: '#4af', verticalAlign: 'middle' }}>
+                  {getModifier(value) >= 0 ? '+' : ''}{getModifier(value)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -289,14 +363,17 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
               <th>Skill</th>
               <th>Proficient</th>
               <th>Value</th>
+              <th>Ручной ввод</th>
             </tr>
           </thead>
           <tbody>
             {DND_SKILLS.map(skill => {
               const abilityKey = SKILL_TO_ABILITY[skill];
-              const mod = getModifier(abilities[abilityKey]);
+              const mod = getModifier(abilitiesState[abilityKey]);
               const proficient = proficientSkills.includes(skill);
-              const value = mod + (proficient ? prof : 0);
+              const autoValue = mod + (proficient ? prof : 0);
+              const manual = manualSkillFlags[skill];
+              const manualValue = manualSkillValues[skill] ?? '';
               return (
                 <tr key={skill}>
                   <td>{skill}</td>
@@ -307,7 +384,25 @@ export default function CharacterPage({ character, onUpdateCharacter }) {
                       onChange={() => handleCheckboxChange(skill)}
                     />
                   </td>
-                  <td>{value >= 0 ? '+' : ''}{value}</td>
+                  <td>
+                    {manual ? (
+                      <input
+                        type="number"
+                        value={manualValue}
+                        style={{ width: 50 }}
+                        onChange={e => handleManualValueChange(skill, e.target.value)}
+                      />
+                    ) : (
+                      <span>{autoValue >= 0 ? '+' : ''}{autoValue}</span>
+                    )}
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={!!manual}
+                      onChange={e => handleManualFlagChange(skill, e.target.checked)}
+                    />
+                  </td>
                 </tr>
               );
             })}

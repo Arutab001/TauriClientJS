@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { useFiles } from '../../FilesContext.jsx';
 
 function lssToInventoryItems(character) {
   let items = [];
@@ -43,6 +44,20 @@ function lssToInventoryItems(character) {
 
 export default function HomePage({ characters, onSelect, onAddCharacter }) {
   const fileInputRef = React.useRef();
+  const [tauriAvailable, setTauriAvailable] = useState(false);
+  const { setFilePaths } = useFiles();
+
+  React.useEffect(() => {
+    // Проверяем доступность Tauri API
+    (async () => {
+      try {
+        await import('@tauri-apps/plugin-dialog');
+        setTauriAvailable(true);
+      } catch {
+        setTauriAvailable(false);
+      }
+    })();
+  }, []);
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -76,10 +91,44 @@ export default function HomePage({ characters, onSelect, onAddCharacter }) {
     e.target.value = '';
   };
 
+  const handleTauriImport = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+      let filePath = await open({ filters: [{ name: 'JSON', extensions: ['json'] }] });
+      filePath = typeof filePath === 'string'
+        ? filePath
+        : Array.isArray(filePath)
+          ? filePath[0]
+          : filePath?.path;
+      if (!filePath) return;
+      const text = await readTextFile(filePath);
+      let parsed = JSON.parse(text);
+      let originalParsed = JSON.parse(text);
+      if (parsed.data && typeof parsed.data === 'string') {
+        parsed = { ...parsed, ...JSON.parse(parsed.data) };
+      }
+      if (!parsed.items) {
+        parsed.items = lssToInventoryItems(parsed);
+      }
+      parsed.__original = originalParsed;
+      parsed.__filePath = filePath;
+      setFilePaths(prev => [...prev, filePath]);
+      onAddCharacter(parsed);
+      console.log('Tauri import success:', filePath);
+    } catch (e) {
+      alert('Ошибка Tauri-импорта: ' + e);
+      console.error(e);
+    }
+  };
+
   return (
     <div>
       <h2>Выберите персонажа</h2>
       <button onClick={() => fileInputRef.current.click()} style={{ marginBottom: 8 }}>Добавить персонажа из файла (браузер)</button>
+      {tauriAvailable && (
+        <button onClick={handleTauriImport} style={{ marginBottom: 16, marginLeft: 8 }}>Открыть через Tauri</button>
+      )}
       <input
         type="file"
         accept="application/json"

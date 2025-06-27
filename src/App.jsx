@@ -55,6 +55,10 @@ export default function App() {
     setSelectedChar(updatedChar);
   };
 
+  const handleRemoveCharacter = (char) => {
+    setCharacterList(prev => prev.filter(c => c !== char));
+  };
+
   const handleTauriImport = async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
@@ -175,6 +179,7 @@ export default function App() {
             characters={characterList}
             onSelect={handleSelectChar}
             onAddCharacter={handleAddCharacter}
+            onRemoveCharacter={handleRemoveCharacter}
             onTauriImport={handleTauriImport}
           />
         </div>

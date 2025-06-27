@@ -42,10 +42,10 @@ function lssToInventoryItems(character) {
   return items;
 }
 
-export default function HomePage({ characters, onSelect, onAddCharacter }) {
+export default function HomePage({ characters, onSelect, onAddCharacter, onRemoveCharacter }) {
   const fileInputRef = React.useRef();
   const [tauriAvailable, setTauriAvailable] = useState(false);
-  const { setFilePaths } = useFiles();
+  const { setFilePaths, filePaths } = useFiles();
 
   React.useEffect(() => {
     // Проверяем доступность Tauri API
@@ -102,6 +102,10 @@ export default function HomePage({ characters, onSelect, onAddCharacter }) {
           ? filePath[0]
           : filePath?.path;
       if (!filePath) return;
+      if (filePaths.includes(filePath)) {
+        alert('Этот файл уже открыт!');
+        return;
+      }
       const text = await readTextFile(filePath);
       let parsed = JSON.parse(text);
       let originalParsed = JSON.parse(text);
@@ -122,6 +126,13 @@ export default function HomePage({ characters, onSelect, onAddCharacter }) {
     }
   };
 
+  const handleClose = (char) => {
+    if (char.__filePath) {
+      setFilePaths(prev => prev.filter(path => path !== char.__filePath));
+    }
+    onRemoveCharacter(char);
+  };
+
   return (
     <div>
       <h2>Выберите персонажа</h2>
@@ -138,11 +149,15 @@ export default function HomePage({ characters, onSelect, onAddCharacter }) {
       />
       <div style={{ display: 'flex', gap: 24 }}>
         {characters.map(char => (
-          <div key={char.name?.value || char.name} style={{ border: '1px solid #888', padding: 16, borderRadius: 8 }}>
+          <div
+            key={char.__filePath || char.name?.value || char.name}
+            style={{ border: '1px solid #888', padding: 16, borderRadius: 8 }}
+          >
             <div><b>{typeof char.name === 'object' ? char.name.value : char.name}</b></div>
             <div>Класс: {char.info?.charClass?.value || char.characterClass || (typeof char.charClass === 'object' ? char.charClass.value : char.charClass)}</div>
             <div>Раса: {char.info?.race?.value || char.race || (typeof char.race === 'object' ? char.race.value : char.race)}</div>
             <button onClick={() => onSelect(char)}>Выбрать</button>
+            <button onClick={() => handleClose(char)} style={{ marginLeft: 8 }}>Закрыть</button>
           </div>
         ))}
       </div>
